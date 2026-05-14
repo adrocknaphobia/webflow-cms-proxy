@@ -1,4 +1,4 @@
-import { fetchCollectionItems } from "@/lib/webflow";
+import { fetchCollectionItemsCached } from "@/lib/webflow";
 import { projectItems } from "@/lib/mapper";
 import { isAllowedOrigin } from "@/lib/allowed-origins";
 import { getEndpoint } from "@/config/endpoints";
@@ -64,22 +64,30 @@ export async function GET(
   const cacheStaleWhileRevalidate = Number(
     process.env.CACHE_STALE_WHILE_REVALIDATE ?? "300"
   );
+  const localCacheTtl = Number(process.env.LOCAL_CACHE_TTL ?? "300");
   const cacheControl = `public, s-maxage=${cacheMaxAge}, stale-while-revalidate=${cacheStaleWhileRevalidate}`;
 
   try {
-    const { items, pagination } = await fetchCollectionItems(
+    const { result, cached } = await fetchCollectionItemsCached(
       config.collectionId,
       apiToken,
-      { offset, limit }
+      { offset, limit, ttlSeconds: localCacheTtl }
     );
-    const projected = projectItems(items, config.fields);
-    const body = JSON.stringify({ items: projected, pagination });
+    const projected = projectItems(result.items, config.fields);
+    const body = JSON.stringify({ items: projected, pagination: result.pagination });
+
+    if (process.env.LOG_REQUESTS) {
+      console.log(
+        `[webflow-cms] ${endpoint} cache=${cached ? "HIT" : "MISS"} offset=${offset} limit=${limit}`
+      );
+    }
 
     return new Response(body, {
       status: 200,
       headers: {
         "Content-Type": "application/json",
         "Cache-Control": cacheControl,
+        "X-Cache": cached ? "HIT" : "MISS",
         ...cors,
       },
     });

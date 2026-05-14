@@ -1,3 +1,5 @@
+import { getCachedItems, setCachedItems } from "./cache";
+
 const WEBFLOW_API_BASE = "https://api.webflow.com/v2";
 
 export interface WebflowItem {
@@ -51,4 +53,21 @@ export async function fetchCollectionItems(
     items,
     pagination: data.pagination ?? { offset, limit, total: items.length },
   };
+}
+
+export async function fetchCollectionItemsCached(
+  collectionId: string,
+  apiToken: string,
+  options: { offset?: number; limit?: number; ttlSeconds?: number } = {}
+): Promise<{ result: WebflowItemsResult; cached: boolean }> {
+  const offset = options.offset ?? 0;
+  const limit = options.limit ?? 100;
+  const ttl = options.ttlSeconds ?? 0;
+
+  const hit = getCachedItems(collectionId, offset, limit);
+  if (hit) return { result: hit, cached: true };
+
+  const result = await fetchCollectionItems(collectionId, apiToken, { offset, limit });
+  setCachedItems(collectionId, offset, limit, result, ttl);
+  return { result, cached: false };
 }

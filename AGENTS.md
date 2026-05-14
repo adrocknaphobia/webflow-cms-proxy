@@ -29,8 +29,10 @@ config/endpoints.ts            — Loader: reads ENDPOINTS_CONFIG path, parses J
 app/api/[endpoint]/route.ts    — Generic GET/OPTIONS handler
 lib/webflow.ts                 — Webflow Data API client (just fetchCollectionItems)
 lib/mapper.ts                  — projectItems: WebflowItem[] → Record<string, unknown>[]
+lib/cache.ts                   — In-process subset-aware LRU cache for Webflow items
 lib/allowed-origins.ts         — CORS allowlist (Webflow domains + cached custom domains)
 scripts/schema.mjs             — Dev-time discovery script (npm run schema)
+scripts/bench.mjs              — Latency benchmark for the Webflow Data API + local cache ops
 .env.local                     — Local env vars (not committed)
 ```
 
@@ -69,6 +71,14 @@ The script reads `WEBFLOW_API_TOKEN` (and `WEBFLOW_SITE_ID` for the no-arg form)
 
 **How field resolution works**: on the first request to an endpoint, the loader fetches the collection schema from `GET /v2/collections/{id}` to build a `displayName → slug` map, cached per-collection for the process lifetime. Display names not found in the schema throw a 500 (server log has the offending field name). If two fields share a display name, the first match wins.
 
+## Profiling
+
+```bash
+node --env-file=.env.local scripts/bench.mjs
+```
+
+Measures Webflow Data API latency (min / p50 / avg / p95 / max across N samples) for the two seeded collections, plus the local cost of a cache slice and a 20-entry containment scan. Use it as a reality check before changing caching behavior — concrete numbers in microseconds vs. milliseconds beat speculation. Note: `limit` is a cap, so latency on a small collection doesn't reflect what large collections cost; populate a test collection if you need real numbers at scale.
+
 ## Response shape
 
 ```json
@@ -85,9 +95,11 @@ The script reads `WEBFLOW_API_TOKEN` (and `WEBFLOW_SITE_ID` for the no-arg form)
 |---|---|
 | `WEBFLOW_API_TOKEN` | Webflow API token — needs `cms:read` (CMS endpoints) and `sites:read` (CORS custom-domain lookup) |
 | `WEBFLOW_SITE_ID` | Webflow site ID — used by `npm run schema` and by CORS |
-| `CACHE_MAX_AGE` | `Cache-Control: s-maxage` in seconds |
-| `CACHE_STALE_WHILE_REVALIDATE` | `Cache-Control: stale-while-revalidate` in seconds |
+| `CACHE_MAX_AGE` | `Cache-Control: s-maxage` in seconds (CDN tier) |
+| `CACHE_STALE_WHILE_REVALIDATE` | `Cache-Control: stale-while-revalidate` in seconds (CDN tier) |
+| `LOCAL_CACHE_TTL` | In-process response-cache TTL in seconds. `0` disables. |
 | `ENDPOINTS_CONFIG` | Path to the endpoints JSON file (relative to project root) |
+| `LOG_REQUESTS` | If set (any non-empty value), print a one-line summary to stdout per request. Off by default. |
 
 Collection IDs and field mappings live in the JSON file at `ENDPOINTS_CONFIG`, not env.
 
@@ -98,6 +110,24 @@ Per-request resolution in `lib/allowed-origins.ts`:
 2. Custom domains — fetched from `GET /v2/sites/:id/custom_domains` on first request, cached in process memory for 24h
 
 `Access-Control-Allow-Origin` always echoes the exact incoming origin (never `*`). Cache resets on cold start / redeploy.
+
+## Caching layers
+
+Two independent layers sit in front of the Webflow API:
+
+1. **CDN tier** — `Cache-Control: s-maxage=<CACHE_MAX_AGE>, stale-while-revalidate=<CACHE_STALE_WHILE_REVALIDATE>` is set on every 200 response. Any CDN in front of the deploy (Cloudflare via Webflow Cloud, Vercel's edge, etc.) caches by full URL across all clients/regions.
+2. **In-process tier** — `lib/cache.ts` keeps a bounded LRU map of **Webflow API responses**. Wrapped by `fetchCollectionItemsCached` in `lib/webflow.ts`. TTL set by `LOCAL_CACHE_TTL`. Cap: 20 entries. Lives in the worker isolate's memory — lost on cold start, not shared across isolates.
+
+The in-process cache sits at the **data layer**, not the response layer: it stores raw Webflow items, and projection (the `fields` mapping) runs on every request. This means:
+- Two endpoints pointing at the same collection share a cache entry
+- Changing `fields` in `endpoints.json` doesn't invalidate the cache — the new projection just runs against the cached items
+- The cached value is the same across endpoints regardless of how each one shapes its response
+
+**Subset-aware lookup**: cache entries record the `[offset, offset+limit)` range they cover. A request whose range is fully contained in any non-expired entry for the same collection is served by slicing that entry — no Webflow call. Example: caching `(offset=0, limit=100)` then requesting `(offset=0, limit=2)` is a HIT; we slice and return. `pagination.total` passes through from the cached entry so clients still see the true total. Partial overlaps (e.g. cached `[0, 50)` and requested `[40, 60)`) are misses; we don't try to merge ranges.
+
+The `X-Cache` response header reports the in-process result (`HIT` or `MISS`). The CDN may add its own (e.g. Cloudflare's `cf-cache-status`).
+
+To bypass: request a range no cached entry covers, or set `LOCAL_CACHE_TTL=0` (disables the in-process tier entirely).
 
 ## Paging
 
