@@ -1,6 +1,9 @@
 import { fetchCollectionItems } from "@/lib/webflow";
-import { mapItemsToVideos } from "@/lib/mapper";
+import { projectItems } from "@/lib/mapper";
 import { isAllowedOrigin } from "@/lib/allowed-origins";
+import { getEndpoint } from "@/config/endpoints";
+
+type RouteContext = { params: Promise<{ endpoint: string }> };
 
 async function corsHeaders(request: Request): Promise<Record<string, string>> {
   const origin = request.headers.get("Origin");
@@ -19,29 +22,39 @@ export async function OPTIONS(request: Request): Promise<Response> {
   });
 }
 
-export async function GET(request: Request): Promise<Response> {
-  const collectionId = process.env.WEBFLOW_COLLECTION_ID;
-  const apiToken = process.env.WEBFLOW_API_TOKEN;
-  const youtubeFieldName = process.env.YOUTUBE_FIELD_NAME;
-  const cacheMaxAge = Number(process.env.CACHE_MAX_AGE ?? "60");
-  const cacheStaleWhileRevalidate = Number(
-    process.env.CACHE_STALE_WHILE_REVALIDATE ?? "300"
-  );
+export async function GET(
+  request: Request,
+  { params }: RouteContext
+): Promise<Response> {
+  const { endpoint } = await params;
   const cors = await corsHeaders(request);
+  const config = getEndpoint(endpoint);
 
-  if (!collectionId || !apiToken || !youtubeFieldName) {
-    return new Response(JSON.stringify({ error: "Failed to fetch videos" }), {
+  if (!config) {
+    return new Response(JSON.stringify({ error: "Unknown endpoint" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json", ...cors },
+    });
+  }
+
+  const apiToken = process.env.WEBFLOW_API_TOKEN;
+  if (!apiToken) {
+    return new Response(JSON.stringify({ error: "Failed to fetch items" }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...cors },
     });
   }
 
+  const cacheMaxAge = Number(process.env.CACHE_MAX_AGE ?? "60");
+  const cacheStaleWhileRevalidate = Number(
+    process.env.CACHE_STALE_WHILE_REVALIDATE ?? "300"
+  );
   const cacheControl = `public, s-maxage=${cacheMaxAge}, stale-while-revalidate=${cacheStaleWhileRevalidate}`;
 
   try {
-    const items = await fetchCollectionItems(collectionId, apiToken);
-    const videos = mapItemsToVideos(items, youtubeFieldName);
-    const body = JSON.stringify({ videos });
+    const items = await fetchCollectionItems(config.collectionId, apiToken);
+    const projected = projectItems(items, config.fields);
+    const body = JSON.stringify({ items: projected });
 
     return new Response(body, {
       status: 200,
@@ -52,7 +65,7 @@ export async function GET(request: Request): Promise<Response> {
       },
     });
   } catch {
-    return new Response(JSON.stringify({ error: "Failed to fetch videos" }), {
+    return new Response(JSON.stringify({ error: "Failed to fetch items" }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...cors },
     });

@@ -1,0 +1,14 @@
+{
+  "videos": {
+    "collectionId": "69d529341fc5cefa55a232ed",
+    "fields": ["name:youtubeId"]
+  },
+  "books": {
+    "collectionId": "69bac0322d45bc4a7e2e5fe9",
+    "fields": [
+      "name:book-title",
+      "book-cover",
+      "cannon-year"
+    ]
+  }
+}

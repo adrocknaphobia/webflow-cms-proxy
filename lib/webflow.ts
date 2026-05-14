@@ -7,11 +7,6 @@ export interface WebflowItem {
 
 interface WebflowCollectionResponse {
   items: WebflowItem[];
-  pagination?: {
-    limit: number;
-    offset: number;
-    total: number;
-  };
 }
 
 export async function fetchCollectionItems(

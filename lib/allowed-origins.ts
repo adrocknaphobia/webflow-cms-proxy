@@ -30,7 +30,7 @@ async function getCustomDomains(): Promise<string[]> {
   }
 
   const siteId = process.env.WEBFLOW_SITE_ID;
-  const apiToken = process.env.WEBFLOW_SITE_API_TOKEN;
+  const apiToken = process.env.WEBFLOW_API_TOKEN;
   if (!siteId || !apiToken) return [];
 
   try {
