@@ -5,15 +5,34 @@ export interface WebflowItem {
   fieldData: Record<string, unknown>;
 }
 
-interface WebflowCollectionResponse {
+export interface WebflowPagination {
+  offset: number;
+  limit: number;
+  total: number;
+}
+
+export interface WebflowItemsResult {
   items: WebflowItem[];
+  pagination: WebflowPagination;
+}
+
+interface WebflowCollectionResponse {
+  items?: WebflowItem[];
+  pagination?: WebflowPagination;
 }
 
 export async function fetchCollectionItems(
   collectionId: string,
-  apiToken: string
-): Promise<WebflowItem[]> {
-  const url = `${WEBFLOW_API_BASE}/collections/${collectionId}/items/live?limit=100`;
+  apiToken: string,
+  options: { offset?: number; limit?: number } = {}
+): Promise<WebflowItemsResult> {
+  const offset = options.offset ?? 0;
+  const limit = options.limit ?? 100;
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(limit),
+  });
+  const url = `${WEBFLOW_API_BASE}/collections/${collectionId}/items/live?${params}`;
 
   const res = await fetch(url, {
     headers: {
@@ -27,5 +46,9 @@ export async function fetchCollectionItems(
   }
 
   const data = (await res.json()) as WebflowCollectionResponse;
-  return data.items ?? [];
+  const items = data.items ?? [];
+  return {
+    items,
+    pagination: data.pagination ?? { offset, limit, total: items.length },
+  };
 }

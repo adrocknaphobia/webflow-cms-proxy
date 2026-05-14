@@ -5,6 +5,20 @@ import { getEndpoint } from "@/config/endpoints";
 
 type RouteContext = { params: Promise<{ endpoint: string }> };
 
+const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 100;
+
+function parsePaging(url: URL): { offset: number; limit: number } {
+  const rawOffset = Number(url.searchParams.get("offset"));
+  const rawLimit = Number(url.searchParams.get("limit"));
+  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.trunc(rawOffset)) : 0;
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(MAX_LIMIT, Math.trunc(rawLimit))
+      : DEFAULT_LIMIT;
+  return { offset, limit };
+}
+
 async function corsHeaders(request: Request): Promise<Record<string, string>> {
   const origin = request.headers.get("Origin");
   if (!(await isAllowedOrigin(origin))) return {};
@@ -45,6 +59,7 @@ export async function GET(
     });
   }
 
+  const { offset, limit } = parsePaging(new URL(request.url));
   const cacheMaxAge = Number(process.env.CACHE_MAX_AGE ?? "60");
   const cacheStaleWhileRevalidate = Number(
     process.env.CACHE_STALE_WHILE_REVALIDATE ?? "300"
@@ -52,9 +67,13 @@ export async function GET(
   const cacheControl = `public, s-maxage=${cacheMaxAge}, stale-while-revalidate=${cacheStaleWhileRevalidate}`;
 
   try {
-    const items = await fetchCollectionItems(config.collectionId, apiToken);
+    const { items, pagination } = await fetchCollectionItems(
+      config.collectionId,
+      apiToken,
+      { offset, limit }
+    );
     const projected = projectItems(items, config.fields);
-    const body = JSON.stringify({ items: projected });
+    const body = JSON.stringify({ items: projected, pagination });
 
     return new Response(body, {
       status: 200,

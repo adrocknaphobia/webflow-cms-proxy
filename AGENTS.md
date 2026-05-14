@@ -99,9 +99,28 @@ Per-request resolution in `lib/allowed-origins.ts`:
 
 `Access-Control-Allow-Origin` always echoes the exact incoming origin (never `*`). Cache resets on cold start / redeploy.
 
+## Paging
+
+Clients control the page via `?offset=` and `?limit=` query params, forwarded to Webflow:
+
+```
+GET /api/books?offset=10&limit=5
+```
+
+Response:
+
+```json
+{
+  "items": [ ... ],
+  "pagination": { "offset": 10, "limit": 5, "total": 42 }
+}
+```
+
+Defaults: `offset=0`, `limit=100`. Limit is clamped to `[1, 100]` (Webflow's max page size). Negative offset clamps to 0. Invalid values (`?limit=abc`) fall back to defaults. No 400s for bad input — match the route's lenient style.
+
 ## Webflow CMS Notes
 
 - Use `/items/live` (not `/items`) — only published items
 - Slugs are stable across display-name renames; field display names are not. Config uses slugs (with the rename override producing the public-facing names)
 - The slug for a collection's primary identifier field is always `name`, regardless of its display name (e.g. "VideoID", "Book Title" — both slug `name`)
-- Pagination not yet exposed; the upstream call is `limit=100` (Webflow's max page size)
+- Webflow's max `limit` per page is 100

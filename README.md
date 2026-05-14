@@ -28,7 +28,16 @@ npm run schema -- <collectionId>     # list fields (with slugs) for a collection
 Request `/api/videos` →
 
 ```json
-{ "items": [{ "youtubeId": "dQw4w9WgXcQ" }, ...] }
+{
+  "items": [{ "youtubeId": "dQw4w9WgXcQ" }, ...],
+  "pagination": { "offset": 0, "limit": 100, "total": 3 }
+}
+```
+
+Paging via `?offset=` and `?limit=` (max 100, defaults `0` / `100`):
+
+```
+GET /api/videos?offset=10&limit=5
 ```
 
 Unknown endpoint slugs return 404.
