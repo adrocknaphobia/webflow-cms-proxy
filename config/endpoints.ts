@@ -23,8 +23,9 @@ function loadEndpoints(): Record<string, EndpointConfig> {
   return JSON.parse(raw) as Record<string, EndpointConfig>;
 }
 
-const endpoints = loadEndpoints();
+let endpoints: Record<string, EndpointConfig> | null = null;
 
 export function getEndpoint(slug: string): EndpointConfig | undefined {
+  if (!endpoints) endpoints = loadEndpoints();
   return endpoints[slug];
 }
