@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import bundled from "./endpoints.json";
 
 export interface EndpointConfig {
   /** Webflow collection ID (copyable from the Designer, top of the collection settings panel) */
@@ -15,12 +16,16 @@ export interface EndpointConfig {
 
 function loadEndpoints(): Record<string, EndpointConfig> {
   const configPath = process.env.ENDPOINTS_CONFIG;
-  if (!configPath) {
-    throw new Error("ENDPOINTS_CONFIG is not set");
+  if (configPath) {
+    try {
+      const absolute = resolve(process.cwd(), configPath);
+      const raw = readFileSync(absolute, "utf-8");
+      return JSON.parse(raw) as Record<string, EndpointConfig>;
+    } catch {
+      // filesystem unavailable (e.g. Cloudflare Workers) — fall through to bundled config
+    }
   }
-  const absolute = resolve(process.cwd(), configPath);
-  const raw = readFileSync(absolute, "utf-8");
-  return JSON.parse(raw) as Record<string, EndpointConfig>;
+  return bundled as Record<string, EndpointConfig>;
 }
 
 let endpoints: Record<string, EndpointConfig> | null = null;
