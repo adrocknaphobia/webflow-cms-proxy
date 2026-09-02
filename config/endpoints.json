@@ -2,10 +2,9 @@
   "quotes": {
     "collectionId": "6a91d026d2d7b6d3087c1b5b",
     "fields": [
-      "name:quote",
       "author-name",
       "author-title",
-      "quote:full-quote"
+      "full-quote"
     ]
   }
 }
