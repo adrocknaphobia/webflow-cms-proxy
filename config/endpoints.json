@@ -4,7 +4,8 @@
     "fields": [
       "name:quote",
       "author-name",
-      "author-title"
+      "author-title",
+      "full-quote"
     ]
   }
 }
